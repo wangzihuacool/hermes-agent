@@ -31,6 +31,7 @@ VisionDB 对 MySQL/Redis 有运行时与配置能力；其他引擎多为元数�
 
 - 已确定引擎类型（或可由端口/日志/指标/VisionDB `list_db_types` 推断并声明置信度）
 - 监控与日志 MCP 可用；VisionDB 用于元数据与 MySQL/Redis 运行时
+- 查 Prometheus 指标前遵守 SOUL「Prometheus 指标发现（硬规则）」及各引擎 `prometheus-*.md` 的发现→查询流程；`tool_describe` 返回的 `server_instructions` 与上述规则同时生效
 
 ## How to Run
 

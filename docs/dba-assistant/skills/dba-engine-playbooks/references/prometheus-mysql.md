@@ -14,6 +14,18 @@
 | 告警状态 | `list_alerts` | 是否仍 firing |
 | 指标说明 | `metric_metadata` | 不确定语义时 |
 
+## 发现→查询硬流程（违反即视为未按规程排查）
+
+1. `tool_describe(mcp__prometheus__query)` → 读 `server_instructions` 中的 MCP 规程。
+2. 用 VisionDB 或告警确定 `<ip>:<port>`，selector 固定为 `{v_metric_source="...", v_metric_type="MYSQL"}`。
+3. **发现**（至少一步，允许并行）：
+   - `label_values`：确认 `v_metric_source` / 指标是否存在；
+   - 或对已知候选指标名做 `series(matches=['mysql_up{...}'])`。
+4. **再查询**：`range_query` / `query` 只使用第 3 步已确认存在的指标名。
+5. **空结果**：不得换 `mysql_*` / `job:Mysql*` 等未验证名字；回到第 3 步，或改查 `mysql_exporter_last_scrape_error` / 交叉 VisionDB+VL。
+
+**禁止**：跳过第 3 步直接套用下文模板 PromQL；模板里的指标名是「候选」，不是默认存在。
+
 ## 通用约定（标签定位）
 
 ```text

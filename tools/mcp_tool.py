@@ -1502,6 +1502,50 @@ class ElicitationHandler:
 
 
 # ---------------------------------------------------------------------------
+# MCP initialize.instructions capture (server-level operational guidelines)
+# ---------------------------------------------------------------------------
+
+_MCP_SERVER_INSTRUCTIONS_MAX_CHARS = 2048
+_MCP_INSTRUCTIONS_TRUNCATION_SUFFIX = (
+    "\n\n[… truncated; full guidelines may be longer at MCP initialize …]"
+)
+
+
+def _extract_initialize_instructions(init_result: Any) -> str:
+    """Return server instructions from an MCP ``InitializeResult``, if any."""
+    if init_result is None:
+        return ""
+    instructions = getattr(init_result, "instructions", None)
+    if instructions is None and isinstance(init_result, dict):
+        instructions = init_result.get("instructions")
+    if not instructions:
+        return ""
+    return str(instructions).strip()
+
+
+def _truncate_mcp_server_instructions(
+    text: str,
+    max_chars: int = _MCP_SERVER_INSTRUCTIONS_MAX_CHARS,
+) -> str:
+    """Truncate long MCP server instructions at a paragraph/sentence boundary."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    budget = max_chars - len(_MCP_INSTRUCTIONS_TRUNCATION_SUFFIX)
+    if budget <= 0:
+        return text[:max_chars]
+    cut = text[:budget]
+    for sep in ("\n\n", "\n", "。"):
+        idx = cut.rfind(sep)
+        if idx > budget * 0.7:
+            cut = cut[: idx + len(sep)]
+            break
+    return cut.rstrip() + _MCP_INSTRUCTIONS_TRUNCATION_SUFFIX
+
+
+# ---------------------------------------------------------------------------
 # Server task -- each MCP server lives in one long-lived asyncio Task
 # ---------------------------------------------------------------------------
 
@@ -1525,7 +1569,7 @@ class MCPServerTask:
         "_pending_call_context",
         "_lifecycle_started_at", "_last_tool_call_at",
         "_idle_timeout_seconds", "_max_lifetime_seconds", "_recycled_reason",
-        "initialize_result", "_ping_unsupported",
+        "initialize_result", "server_instructions", "_ping_unsupported",
         "_reconnect_retries",
     )
 
@@ -1581,6 +1625,8 @@ class MCPServerTask:
         # ``.capabilities.prompts``) instead of assuming every ``ClientSession``
         # method attribute corresponds to a supported server method. See #18051.
         self.initialize_result: Optional[Any] = None
+        # Truncated ``initialize.instructions`` from the latest handshake.
+        self.server_instructions: Optional[str] = None
         # Set True the first time a keepalive ``ping`` returns JSON-RPC
         # -32601 (method not found): the server is tool-capable but doesn't
         # implement the optional ``ping`` utility. Subsequent keepalives fall
@@ -1611,6 +1657,12 @@ class MCPServerTask:
         if caps is None:
             return True
         return getattr(caps, "tools", None) is not None
+
+    def _capture_initialize_result(self, init_result: Any) -> None:
+        """Store handshake metadata and cache truncated server instructions."""
+        self.initialize_result = init_result
+        raw = _extract_initialize_instructions(init_result)
+        self.server_instructions = _truncate_mcp_server_instructions(raw) or None
 
     def _is_recycled_stdio(self) -> bool:
         """Return True when a stdio server was intentionally recycled."""
@@ -2149,8 +2201,10 @@ class MCPServerTask:
                     connect_timeout = float(
                         config.get("connect_timeout", _DEFAULT_CONNECT_TIMEOUT)
                     )
-                    self.initialize_result = await asyncio.wait_for(
-                        session.initialize(), timeout=connect_timeout
+                    self._capture_initialize_result(
+                        await asyncio.wait_for(
+                            session.initialize(), timeout=connect_timeout
+                        )
                     )
                     self.session = session
                     self._mark_lifecycle_started()
@@ -2445,8 +2499,10 @@ class MCPServerTask:
                     # stdio path (#59349): an endpoint that accepts the
                     # connection but never answers ``initialize`` parks this
                     # coroutine forever on the background loop.
-                    self.initialize_result = await asyncio.wait_for(
-                        session.initialize(), timeout=float(connect_timeout)
+                    self._capture_initialize_result(
+                        await asyncio.wait_for(
+                            session.initialize(), timeout=float(connect_timeout)
+                        )
                     )
                     self.session = session
                     await self._discover_tools()
@@ -2502,8 +2558,10 @@ class MCPServerTask:
                 ):
                     async with ClientSession(read_stream, write_stream, **sampling_kwargs) as session:
                         # Bound the handshake (#59349) — see stdio path.
-                        self.initialize_result = await asyncio.wait_for(
-                            session.initialize(), timeout=float(connect_timeout)
+                        self._capture_initialize_result(
+                            await asyncio.wait_for(
+                                session.initialize(), timeout=float(connect_timeout)
+                            )
                         )
                         self.session = session
                         await self._discover_tools()
@@ -2534,8 +2592,10 @@ class MCPServerTask:
             ):
                 async with ClientSession(read_stream, write_stream, **sampling_kwargs) as session:
                     # Bound the handshake (#59349) — see stdio path.
-                    self.initialize_result = await asyncio.wait_for(
-                        session.initialize(), timeout=float(connect_timeout)
+                    self._capture_initialize_result(
+                        await asyncio.wait_for(
+                            session.initialize(), timeout=float(connect_timeout)
+                        )
                     )
                     self.session = session
                     await self._discover_tools()
@@ -4654,6 +4714,41 @@ def _track_mcp_tool_server(tool_name: str, server_name: str) -> None:
     safe_server_name = sanitize_mcp_name_component(server_name)
     with _lock:
         _mcp_tool_server_names[tool_name] = safe_server_name
+
+
+def _resolve_server_for_tool(tool_name: str) -> Optional[MCPServerTask]:
+    """Return the connected ``MCPServerTask`` that registered *tool_name*."""
+    with _lock:
+        safe_name = _mcp_tool_server_names.get(tool_name)
+        if not safe_name:
+            return None
+        for name, server in _servers.items():
+            if sanitize_mcp_name_component(name) == safe_name:
+                return server
+    return None
+
+
+def get_mcp_server_instructions(server_name: str) -> Optional[str]:
+    """Return cached, truncated instructions for a connected MCP server."""
+    with _lock:
+        server = _servers.get(server_name)
+    if server is None:
+        return None
+    cached = getattr(server, "server_instructions", None)
+    if cached:
+        return cached
+    raw = _extract_initialize_instructions(getattr(server, "initialize_result", None))
+    if not raw:
+        return None
+    return _truncate_mcp_server_instructions(raw) or None
+
+
+def get_mcp_server_instructions_for_tool(tool_name: str) -> Optional[str]:
+    """Return cached server instructions for the MCP server behind *tool_name*."""
+    server = _resolve_server_for_tool(tool_name)
+    if server is None:
+        return None
+    return get_mcp_server_instructions(server.name)
 
 
 def _forget_mcp_tool_server(tool_name: str) -> None:
