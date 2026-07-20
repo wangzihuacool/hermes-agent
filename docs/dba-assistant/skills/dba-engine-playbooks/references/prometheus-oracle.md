@@ -13,6 +13,16 @@ VisionDB **无** Oracle 专用运行时 status——Prom + Zabbix + 用户提供
 | 趋势 | `range_query` |
 | 告警 | `list_alerts` |
 
+## 发现→查询硬流程（违反即视为未按规程排查）
+
+1. `tool_describe(mcp__prometheus__query)` → 读 `server_instructions` 中的 MCP 规程。
+2. 用 VisionDB 或告警确定 `<ip>:<port>`，selector 固定为 `{v_metric_source="...", v_metric_type="ORACLE"}`（RAC 不确定时先 `label_values(v_metric_type)` 试 `ORACLERAC`）。
+3. **发现**（至少一步）：`label_values` / `series` 确认 `oracledb_*` 等指标存在。
+4. **再查询**：`query` / `range_query` 只用第 3 步已确认存在的指标名。
+5. **空结果**：禁止换猜的 `oracledb_*` / `oracle_*` 名字；回到第 3 步或交叉 Zabbix + 用户侧 alert/AWR。
+
+**禁止**：跳过发现直接套用下文模板；模板指标名为候选，不是默认存在。
+
 ## 通用约定
 
 ```text

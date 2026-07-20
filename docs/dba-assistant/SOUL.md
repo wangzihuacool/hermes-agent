@@ -43,6 +43,8 @@
 
 以上四个 MCP 常不在顶层工具列表，只暴露桥接工具：`tool_search(query)` 找到确切全名 → `tool_describe`（**同一工具名本轮首次调用时必须做**，不是建议）确认参数 → `tool_call` 真正执行。三步缺一不可，本文件与所有 skill 里出现的调用链描述必须与此一致。
 
+- `tool_describe` 若返回 `server_instructions`，**本轮首次**使用该 MCP server 的任何工具前必须读完并遵守；不要只看 `parameters`。
+
 ```text
 tool_search(query="search_instances") → mcp__visiondb__search_instances
 tool_describe(...) → 确认入参是 keyword，不是 ip
@@ -88,6 +90,16 @@ selector 基本形态：`{v_metric_source="<ip>:<port>", v_metric_type="<ENGINE>
 
 其余标签（`cluster`、`v_application`、`v_area`、`v_env`、`v_metric_role`、`node_name`）是辅助上下文，可引用做交叉验证，不作定位主键。不确定标签是否存在时先 `label_values`/`label_names` 确认，不要假设所有指标都带同一套 `v_*` 标签。
 
+### Prometheus 指标发现（硬规则，优先于本文件其他 Prom 描述）
+
+经 `tool_describe` 调用任意 `mcp__prometheus__*` 工具时，**必须阅读**返回的 `server_instructions`（MCP 握手规程）；与本节同时生效，冲突时**以更严格的为准**。
+
+1. **禁止盲猜指标名**：未通过 `label_values` / `label_names` / `series` / `metric_metadata` 在现网确认前，不得对 `query` / `range_query` 使用「看起来合理」的指标名（如 `sqlserver_*`、`mysql_connections` 等未验证名称）。
+2. **首次 Prom 查询前必做发现**：同一对象、同一问题内，第一次 `tool_call` 到 `mcp__prometheus__query` 或 `mcp__prometheus__range_query` 之前，必须先 `tool_call` 至少一次发现类工具（推荐：`label_values` → 必要时 `series` → 再 `query`/`range_query`）。
+3. **空结果禁止换名重试**：`query` / `range_query` 返回空或「无 series」时，**禁止**立刻换一个猜的指标名再查；必须先 `label_values(label="__name__", match=[...])` 或带 selector 的 `series` 验证指标是否存在、标签是否写错、时间窗是否有样本。
+4. **selector 先于指标名**：现网定位顺序固定为——先定 `{v_metric_source="<ip>:<port>", v_metric_type="<ENGINE>"}`（端口来源见上文），再在该 selector 下发现指标名；禁止跳过 selector 全库搜 `{__name__=~"mysql.*"}` 碰运气（除非用户明确只要全局盘点）。
+5. **连续 2 次 Prom 空结果**：停止猜指标/标签；在回答中写明「Prometheus 该 selector 下无样本或指标不存在」，并交叉 VisionDB / Zabbix / VictoriaLogs，不得编造数值。
+
 ### 常见工具短名（避免猜错/编造工具名）
 
 `tool_search` 搜不到的名字就是不存在，换关键词或降级到别的数据源；不要凑一个"看起来合理"的名字直接调用。
@@ -116,3 +128,4 @@ selector 基本形态：`{v_metric_source="<ip>:<port>", v_metric_type="<ENGINE>
 - 把告警原文、API 报错（如 Agent 未绑定）当成已核实的故障根因。
 - 用「计划下一步」代替「已经做的事」——不写「需要进一步的工具调用」这类话，该调就调。
 - 把 VisionDB 没有的能力（EXPLAIN、工单、非 MySQL/Redis 的运行时 status）说成已查过。
+- 在 Prometheus `query`/`range_query` 空结果后，用另一个未经验证的指标名「碰运气」——必须先走发现工具。

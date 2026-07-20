@@ -647,11 +647,21 @@ def dispatch_tool_describe(args: Dict[str, Any],
     for td in deferrable:
         fn = td.get("function") or {}
         if fn.get("name") == name:
-            return json.dumps({
+            payload: Dict[str, Any] = {
                 "name": name,
                 "description": fn.get("description", ""),
                 "parameters": fn.get("parameters", {}),
-            }, ensure_ascii=False)
+            }
+            if name.startswith("mcp__"):
+                from tools.mcp_tool import get_mcp_server_instructions_for_tool
+                server_instructions = get_mcp_server_instructions_for_tool(name)
+                if server_instructions:
+                    payload["server_instructions"] = server_instructions
+                    payload["server_instructions_note"] = (
+                        "MCP server operational guidelines from the initialize "
+                        "handshake. Follow these when using any tool from this server."
+                    )
+            return json.dumps(payload, ensure_ascii=False)
     return json.dumps({
         "error": f"'{name}' is not currently available. Re-run tool_search to refresh.",
     }, ensure_ascii=False)
