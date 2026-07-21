@@ -15,7 +15,8 @@ echo "[$(date '+%F %T')] 启动 gateway..."
 hermes gateway start --system
 
 echo "[$(date '+%F %T')] 启动 dashboard..."
-hermes dashboard --host "$DASHBOARD_HOST" --port "$DASHBOARD_PORT" --no-open &
+# 内网无 npm：强制使用已有 hermes_cli/web_dist，避免因源码时间戳触发重建
+hermes dashboard --host "$DASHBOARD_HOST" --port "$DASHBOARD_PORT" --no-open --skip-build &
 
 echo "[$(date '+%F %T')] 完成"
 hermes gateway status --system
