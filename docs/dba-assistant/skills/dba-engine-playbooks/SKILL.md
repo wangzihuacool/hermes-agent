@@ -1,17 +1,18 @@
 ---
 name: dba-engine-playbooks
 description: "Engine-specific checklists for MySQL and peers."
-version: 1.5.0
+version: 1.6.0
 author: wl
 license: MIT
 platforms: [linux, macos]
 metadata:
   hermes:
-    tags: [dba, mysql, redis, oracle, oceanbase, postgres, elasticsearch, sqlserver, visiondb]
+    tags: [dba, mysql, redis, oracle, oceanbase, postgres, elasticsearch, sqlserver, visiondb, zabbix]
     category: dba
     related_skills:
       - dba-troubleshooting
       - dba-performance-tuning
+      - dba-monitoring-alerts
 ---
 
 # DBA Engine Playbooks Skill
@@ -20,23 +21,26 @@ metadata:
 指标名以环境 Prometheus/Zabbix 实际为准；清单是提问框架不是固定 PromQL。
 VisionDB 对 MySQL/Redis 有运行时与配置能力；其他引擎多为元数据级（若已纳管）。
 跨引擎的 VisionDB MCP 工具/枚举/调用链见 `references/visiondb-mcp.md`。
+主机层 CPU/内存/磁盘（空间与 DISK-IO）见 `references/zabbix.md`。
 
 ## When to Use
 
 - 已知引擎的排障或优化
 - 多引擎环境需要切换检查口径
 - 写巡检/变更评估时需要引擎要点
+- 查主机负载 / Zabbix CPU·内存·磁盘 IO·空间
 
 ## Prerequisites
 
 - 已确定引擎类型（或可由端口/日志/指标/VisionDB `list_db_types` 推断并声明置信度）
 - 监控与日志 MCP 可用；VisionDB 用于元数据与 MySQL/Redis 运行时
 - 查 Prometheus 指标前遵守 SOUL「Prometheus 指标发现（硬规则）」及各引擎 `prometheus-*.md` 的发现→查询流程；`tool_describe` 返回的 `server_instructions` 与上述规则同时生效
+- 查 Zabbix 主机资源前读 `references/zabbix.md`（负载看 DISK-IO，空间看「文件系统」；`item_get` 后必须取 history）
 
 ## How to Run
 
 1. 判定引擎（用户声明 > VisionDB 库类型 > 端口/日志/指标）。
-2. `read_file` 读取本 skill 下 `references/<engine>.md`；需要 VisionDB 工具细节时读 `references/visiondb-mcp.md`。
+2. `read_file` 读取本 skill 下 `references/<engine>.md`；需要 VisionDB 工具细节时读 `references/visiondb-mcp.md`；主机资源读 `references/zabbix.md`。
 3. 按清单取证；缺只读 SQL / EXPLAIN 能力时改为「请用户执行并回贴」。
 
 ## Quick Reference
@@ -44,6 +48,7 @@ VisionDB 对 MySQL/Redis 有运行时与配置能力；其他引擎多为元数�
 | 引擎 | Reference | VisionDB 运行时 |
 |------|-----------|-----------------|
 | （跨引擎） | `references/visiondb-mcp.md` | 定位/拓扑/切换/异常；仅 MySQL/Redis 有 status/configs |
+| （主机监控） | `references/zabbix.md` | —；经 Zabbix MCP：CPU/内存/空间/IOPS/await/util/吞吐 |
 | MySQL | `references/mysql.md`；日志 `victorialogs-mysql.md`；指标 `prometheus-mysql.md` | status / configs / 集群配置对比 |
 | Redis | `references/redis.md`；指标 `prometheus-redis.md` | status / configs |
 | Oracle | `references/oracle.md`；指标 `prometheus-oracle.md` | 元数据（若纳管）；无专用 status tool |

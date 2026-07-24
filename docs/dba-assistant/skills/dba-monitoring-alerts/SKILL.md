@@ -38,7 +38,7 @@ MCP 调用机制、VisionDB 定位链、参数命名见 SOUL.md；VisionDB 工�
 
 | 告警/用户表述 | 第 1 数据源 | 首选 tool（短名） | 第 2 步 | 勿用 |
 |---------------|-------------|-------------------|---------|------|
-| 主机 CPU/内存/磁盘/网卡、Zabbix 电话/短信 | Zabbix | `problem_active_get` / `host_status_get` → `item_history_summary_get` | Prom `range_query` 看同窗趋势 | 一上来只查 VL 当「主机证据」 |
+| 主机 CPU/内存/磁盘/网卡、Zabbix 电话/短信 | Zabbix | `problem_active_get` / `host_status_get` → `item_history_summary_get`（指标怎么搜见 `dba-engine-playbooks/references/zabbix.md`） | Prom `range_query` 看同窗趋势 | 一上来只查 VL 当「主机证据」；负载误搜「磁盘使用率」当空间 |
 | Prom 规则 firing、指标飙高、误报判断 | Prometheus | `list_alerts` → `label_values` → `range_query`（趋势）/`query`（瞬时） | VL `hits` 侧证 | `stats_query` / `stats_query_range`（那是 VL，不是 Prom） |
 | 库挂了 / 连不上 / DeadMaster / 切换 | VisionDB | `search_instances` → status / `list_switchover_history` | **必查** Prom：告警/故障同窗 `range_query`（先确认 series 有无数据，再看 `up`/连接/复制等是否异常）→ Zabbix 主机 + VL errorlog | 只复述告警原文；跳过 Prom 只凭 VisionDB/日志下结论 |
 | 慢查询 / 锁 / errorlog /「看日志」 | VictoriaLogs | `streams`/`field_values` 摸底 → `hits`（量）→ `query`（样本） | Prom 趋势对齐时间窗 | 用 `host` 当 IP 过滤；把 VL `query` 当 PromQL |

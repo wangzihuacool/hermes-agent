@@ -68,7 +68,7 @@ MySQL 日志 stream、字段与可复制 LogsQL：`dba-engine-playbooks/referenc
 
 ### Phase 1 — 主机层（Zabbix）— 主类 E/F 优先；A/G 必交叉
 
-`host_get` 定位主机 → `problem_active_get` / `host_status_get` → 需要历史时 `item_history_summary_get`。重点：磁盘 util/await、CPU iowait、内存、网卡丢包。
+`host_get` 定位主机 → `problem_active_get` / `host_status_get` → 需要历史时 `item_history_summary_get`。重点：磁盘 util/await、CPU iowait、内存、网卡丢包。各指标的 search/key 与「负载≠空间」约定见 `dba-engine-playbooks/references/zabbix.md`。
 
 ### Phase 2 — 趋势指标（Prometheus）— 主类 B/D/E
 
